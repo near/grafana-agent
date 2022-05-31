@@ -1,0 +1,26 @@
+metrics_scraper "default"  {
+    targets = [
+        {
+            targets = [{ "__address__" = "localhost:9001"}]
+            labels = {}
+        }
+    ]
+    receiver = remote_write.default.receiver
+}
+
+
+// Each metrics_forwarder is implemented as a WAL + zero or more remote_writes.
+remote_write "default" {
+  external_labels = {
+    cluster = "flow-demo"
+  }
+
+  remote_write {
+    url = "https://prometheus-us-central1.grafana.net/api/prom/push"
+
+    basic_auth {
+      username = "12345"
+      password = "password"
+    }
+  }
+}

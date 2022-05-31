@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
-	"go.uber.org/atomic"
 )
 
 // ErrWALClosed is an error returned when a WAL operation can't run because the
@@ -121,7 +120,7 @@ type Storage struct {
 	appenderPool sync.Pool
 	bufPool      sync.Pool
 
-	ref    *atomic.Uint64
+	ref    RefCache
 	series *stripeSeries
 
 	deletedMtx sync.Mutex
@@ -132,6 +131,11 @@ type Storage struct {
 
 // NewStorage makes a new Storage.
 func NewStorage(logger log.Logger, registerer prometheus.Registerer, path string) (*Storage, error) {
+	return NewStorageWithRefCache(logger, registerer, path, NewTraditionalCache())
+}
+
+// NewStorageWithRefCache makes a new Storage.
+func NewStorageWithRefCache(logger log.Logger, registerer prometheus.Registerer, path string, ref RefCache) (*Storage, error) {
 	w, err := wal.NewSize(logger, registerer, SubDirectory(path), wal.DefaultSegmentSize, true)
 	if err != nil {
 		return nil, err
@@ -144,7 +148,7 @@ func NewStorage(logger log.Logger, registerer prometheus.Registerer, path string
 		deleted: map[chunks.HeadSeriesRef]int{},
 		series:  newStripeSeries(),
 		metrics: newStorageMetrics(registerer),
-		ref:     atomic.NewUint64(0),
+		ref:     ref,
 	}
 
 	storage.bufPool.New = func() interface{} {
@@ -158,6 +162,7 @@ func NewStorage(logger log.Logger, registerer prometheus.Registerer, path string
 			series:    make([]record.RefSeries, 0, 100),
 			samples:   make([]record.RefSample, 0, 100),
 			exemplars: make([]record.RefExemplar, 0, 10),
+			ref:       ref,
 		}
 	}
 
@@ -440,6 +445,8 @@ func (w *Storage) Truncate(mint int64) error {
 	w.deletedMtx.Lock()
 	for ref, segment := range w.deleted {
 		if segment < first {
+			// If using a global cache we need to release the idea
+			w.ref.ReleaseRef(uint64(ref))
 			delete(w.deleted, ref)
 			w.metrics.totalRemovedSeries.Inc()
 		}
@@ -564,6 +571,7 @@ type appender struct {
 	series    []record.RefSeries
 	samples   []record.RefSample
 	exemplars []record.RefExemplar
+	ref       RefCache
 }
 
 func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
@@ -617,10 +625,11 @@ func (a *appender) getOrCreate(l labels.Labels) (series *memSeries, created bool
 	if series != nil {
 		return series, false
 	}
-
-	ref := chunks.HeadSeriesRef(a.w.ref.Inc())
+	refid, _ := a.ref.GetOrCreateRef(l)
+	ref := chunks.HeadSeriesRef(refid)
 	series = &memSeries{ref: ref, lset: l}
 	a.w.series.set(l.Hash(), series)
+	// This is true from the appender format this a new item
 	return series, true
 }
 
