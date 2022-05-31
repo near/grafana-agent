@@ -101,7 +101,8 @@ func NewComponent(o component.Options, c RemoteConfig) (*Component, error) {
 	// TODO(rfratto): don't hardcode base path
 	walLogger := log.With(o.Logger, "subcomponent", "wal")
 	dataPath := filepath.Join("data-agent", o.ID)
-	walStorage, err := wal.NewStorage(walLogger, reg, filepath.Join("data-agent", o.ID))
+	// LOOK HERE
+	walStorage, err := wal.NewStorageWithRefCache(walLogger, reg, filepath.Join("data-agent", o.ID), wal.NewTraditionalCache())
 	if err != nil {
 		return nil, err
 	}
