@@ -37,6 +37,7 @@ var (
 	minWALTime           = 5 * time.Minute
 	maxWALTime           = 8 * time.Hour
 	remoteFlushDeadline  = 1 * time.Minute
+	refCache             = wal.NewTraditionalCache()
 )
 
 func init() {
@@ -102,7 +103,7 @@ func NewComponent(o component.Options, c RemoteConfig) (*Component, error) {
 	walLogger := log.With(o.Logger, "subcomponent", "wal")
 	dataPath := filepath.Join("data-agent", o.ID)
 	// LOOK HERE
-	walStorage, err := wal.NewStorageWithRefCache(walLogger, reg, filepath.Join("data-agent", o.ID), wal.NewTraditionalCache())
+	walStorage, err := wal.NewStorageWithRefCache(walLogger, reg, filepath.Join("data-agent", o.ID), refCache)
 	if err != nil {
 		return nil, err
 	}

@@ -55,7 +55,7 @@ type Config struct {
 	LabelValueLengthLimit uint                `hcl:"label_value_length_limit,optional"`
 
 	// TODO(rfratto): http client config
-	Receiver *components.MetricsReceiver `hcl:"receiver"`
+	Receiver []*components.MetricsReceiver `hcl:"receiver"`
 }
 
 var DefaultConfig = Config{
@@ -102,7 +102,7 @@ type Component struct {
 func NewComponent(o component.Options, c Config) (*Component, error) {
 	app := &lazyAppendable{id: o.ID}
 	if c.Receiver != nil {
-		app.Set(c.Receiver.Appendable)
+		app.Set(c.Receiver)
 	}
 
 	scrapeLogger := log.With(o.Logger, "subcomponent", "scrape")
@@ -239,7 +239,52 @@ func (c *Component) Config() Config {
 type lazyAppendable struct {
 	id    string
 	mut   sync.RWMutex
-	inner storage.Appendable
+	inner []storage.Appender
+}
+
+func (la *lazyAppendable) Append(ref storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
+	if len(la.inner) == 0 {
+		return 0, nil
+	}
+	newRef := storage.SeriesRef(0)
+	for _, in := range la.inner {
+		nr, err := in.Append(ref, l, t, v)
+		newRef = nr
+		if err != nil {
+			return 0, err
+		}
+	}
+	return newRef, nil
+}
+
+func (la *lazyAppendable) Commit() error {
+	if len(la.inner) == 0 {
+		return nil
+	}
+	for _, in := range la.inner {
+		err := in.Commit()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (la *lazyAppendable) Rollback() error {
+	if len(la.inner) == 0 {
+		return nil
+	}
+	for _, in := range la.inner {
+		err := in.Rollback()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (la *lazyAppendable) AppendExemplar(ref storage.SeriesRef, l labels.Labels, e exemplar.Exemplar) (storage.SeriesRef, error) {
+	return 0, nil
 }
 
 var _ storage.Appendable = (*lazyAppendable)(nil)
@@ -247,32 +292,22 @@ var _ storage.Appendable = (*lazyAppendable)(nil)
 func (la *lazyAppendable) Appender(ctx context.Context) storage.Appender {
 	la.mut.RLock()
 	defer la.mut.RUnlock()
-
-	if la.inner == nil {
-		return &failedAppender{id: la.id}
-	}
-
-	return la.inner.Appender(ctx)
+	return la
 }
 
-func (la *lazyAppendable) Set(app storage.Appendable) {
+func (la *lazyAppendable) Set(app []*components.MetricsReceiver) {
 	la.mut.Lock()
 	defer la.mut.Unlock()
-	la.inner = app
+	la.inner = make([]storage.Appender, 0)
+	if len(app) == 0 {
+		return
+	}
+	// TODO there is totally an issue with locking here but not above
+	la.inner = make([]storage.Appender, 0)
+	for _, a := range app {
+		if a == nil {
+			continue
+		}
+		la.inner = append(la.inner, a.Appender(context.Background()))
+	}
 }
-
-type failedAppender struct{ id string }
-
-var _ storage.Appender = (*failedAppender)(nil)
-
-func (fa *failedAppender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
-	return 0, fmt.Errorf("component %s does not have a configured MetricsReceiver to send samples to", fa.id)
-}
-
-func (fa *failedAppender) AppendExemplar(ref storage.SeriesRef, l labels.Labels, e exemplar.Exemplar) (storage.SeriesRef, error) {
-	return 0, fmt.Errorf("component %s does not have a configured MetricsReceiver to send examplars to", fa.id)
-}
-
-func (fa *failedAppender) Commit() error { return nil }
-
-func (fa *failedAppender) Rollback() error { return nil }

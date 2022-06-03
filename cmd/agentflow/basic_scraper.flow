@@ -5,7 +5,7 @@ metrics_scraper "default"  {
             labels = {}
         }
     ]
-    receiver = remote_write.default.receiver
+    receiver = [remote_write.default.receiver, remote_write.scrape2.receiver]
 }
 
 
@@ -17,7 +17,20 @@ remote_write "default" {
 
   remote_write {
     url = "https://prometheus-us-central1.grafana.net/api/prom/push"
+    basic_auth {
+      username = "12345"
+      password = "password"
+    }
+  }
+}
 
+remote_write "scrape2" {
+  external_labels = {
+    cluster = "flow-demo-scrape-2"
+  }
+
+  remote_write {
+    url = "https://prometheus-us-central1.grafana.net/api/prom/push"
     basic_auth {
       username = "12345"
       password = "password"
