@@ -81,6 +81,7 @@ integrations:
   [windows: <windows_exporter_config>]
   [eventhandler: <eventhandler_config>]
   [snmp: <snmp_exporter_config>]
+  [ebpf: <ebpf_config>]
 
   # Configs for integrations that do support multiple instances. Note that
   # these must be arrays.
@@ -116,6 +117,9 @@ integrations:
 
   app_agent_receiver_configs:
     [- <app_agent_receiver_config>]
+
+  apache_http_configs:
+    [- <apache_http_config>]
 ```
 
 Note that most integrations are no longer configured with the `_exporter` name.
@@ -144,6 +148,14 @@ autoscrape:
 
   # Specifies the metrics instance name to send metrics to.
   [metrics_instance: <string> | default = <integrations.metrics.autoscrape.metrics_instance>]
+
+  # Relabel the autoscrape job.
+  relabel_configs:
+    [- <relabel_config> ... ]
+
+  # Relabel metrics coming from the integration.
+  metric_relabel_configs:
+    [ - <relabel_config> ... ]
 
   # Autoscrape interval and timeout.
   [scrape_interval: <duration> | default = <integrations.metrics.autoscrape.scrape_interval>]

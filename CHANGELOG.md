@@ -10,6 +10,22 @@ internal API changes are not present.
 Main (unreleased)
 -----------------
 
+### Features
+
+- Introduce Apache HTTP exporter integration. (@v-zhuravlev)
+
+- Introduce eBPF exporter integration. (@tpaschalis)
+
+### Bugfixes
+
+- Integer types fail to unmarshal correctly in operator additional scrape configs. (@rlankfo)
+
+- Unwrap replayWAL error before attempting corruption repair. (@rlankfo)
+
+
+v0.25.0 (2022-06-06)
+-------------------------
+
 > **BREAKING CHANGES**: This release has breaking changes. Please read entries
 > carefully and consult the [upgrade guide][] for specific instructions.
 
@@ -36,7 +52,6 @@ Main (unreleased)
 
 - Configure the agent to report the use of feature flags to grafana.com. (@marctc)
 
-
 ### Enhancements
 
 - integrations-next: Integrations using autoscrape will now autoscrape metrics
@@ -51,6 +66,13 @@ Main (unreleased)
 
 - Resolved issue in v2 integrations where if an instance name was a prefix of another the route handler would fail to
   match requests on the longer name (@mattdurham)
+
+- Set `include_metadata` to true by default for OTLP traces receivers (@mapno)
+
+
+### Bugfixes
+
+- Scraping service was not honoring the new server grpc flags `server.grpc.address`.  (@mattdurham)
 
 ### Other changes
 

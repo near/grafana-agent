@@ -2,6 +2,7 @@ package wal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -168,7 +169,12 @@ func NewStorageWithRefCache(logger log.Logger, registerer prometheus.Registerer,
 
 	if err := storage.replayWAL(); err != nil {
 		level.Warn(storage.logger).Log("msg", "encountered WAL read error, attempting repair", "err", err)
-		if err := w.Repair(err); err != nil {
+
+		var ce *wal.CorruptionErr
+		if ok := errors.As(err, &ce); !ok {
+			return nil, err
+		}
+		if err := w.Repair(ce); err != nil {
 			return nil, fmt.Errorf("repair corrupted WAL: %w", err)
 		}
 	}
