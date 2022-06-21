@@ -1,4 +1,4 @@
-package scraper
+package scraperbuffer
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func init() {
 	scrape.UserAgent = fmt.Sprintf("GrafanaAgent/%s", build.Version)
 
 	component.Register(component.Registration{
-		Name: "metrics_scraper",
+		Name: "metrics_scraper_buffer",
 		Args: Config{},
 		Build: func(o component.Options, c component.Arguments) (component.Component, error) {
 			return NewComponent(o, c.(Config))
@@ -54,7 +54,8 @@ type Config struct {
 	LabelNameLengthLimit  uint                `hcl:"label_name_length_limit,optional"`
 	LabelValueLengthLimit uint                `hcl:"label_value_length_limit,optional"`
 
-	Receiver []*components.MetricsReceiver `hcl:"receiver"`
+	// TODO(rfratto): http client config
+	Receiver []*components.MetricsBuffer `hcl:"receiver"`
 }
 
 var DefaultConfig = Config{
@@ -95,6 +96,56 @@ type Component struct {
 	newTargets chan struct{}
 	scraper    *scrape.Manager
 	app        *lazyAppendable
+}
+
+type scrapeAppendable struct {
+	// Not sure if this actually necessary
+	mut      sync.Mutex
+	buffer   map[int64]*components.MetricsBuffer
+	receiver []*components.MetricsBuffer
+}
+
+func newScrapeAppendable(receiver []*components.MetricsBuffer) *scrapeAppendable {
+	return &scrapeAppendable{
+		buffer:   make(map[int64]*components.MetricsBuffer),
+		receiver: receiver,
+	}
+}
+
+func (s *scrapeAppendable) Append(ref storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	set, found := s.buffer[t]
+	if !found {
+		set = &components.MetricsBuffer{
+			Timestamp: t,
+			Metrics:   make([]components.MetricRef, 0),
+		}
+		s.buffer[t] = set
+	}
+	set.Metrics = append(set.Metrics, components.MetricRef{
+		RefId: 0,
+		Value: v,
+	})
+}
+
+func (s *scrapeAppendable) Commit() error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+}
+
+func (s *scrapeAppendable) Rollback() error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+}
+
+func (s *scrapeAppendable) AppendExemplar(ref storage.SeriesRef, l labels.Labels, e exemplar.Exemplar) (storage.SeriesRef, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s *scrapeAppendable) Appender(ctx context.Context) storage.Appender {
+	return s
 }
 
 // NewComponent creates a new metrics_scraper component.
